@@ -9,8 +9,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.env.Environment;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
@@ -39,31 +37,12 @@ public class ZendeskService {
     private static final String ESCAPED_LINE_SEPARATOR = "\\n";
     private static final String ESCAPE_ER = "\\";
     private static final String HTML_BR = "<br/>";
-    @Value("#{envPC['zendesk.ticket']}")
-    public String PETICION_ZENDESK= "";
-
-    @Value("#{envPC['zendesk.token']}")
-    public String TOKEN_ZENDESK= "";
-
-    @Value("#{envPC['zendesk.url']}")
-    public String URL_ZENDESK= "";
-
-    @Value("#{envPC['zendesk.user']}")
-    public String ZENDESK_USER= "";
-
-    @Value("#{envPC['tarjetas.getDatos']}")
-    public String TARJETAS_GETDATOS = "";
-
-    @Value("#{envPC['cliente.getDatos']}")
-    public String CLIENTE_GETDATOS = "";
-
-    @Value("#{envPC['zendesk.error.mail.funcionalidad']}")
-    public String ZENDESK_ERROR_MAIL_FUNCIONALIDAD = "";
-
-    @Value("#{envPC['zendesk.error.destinatario']}")
-    public String ZENDESK_ERROR_DESTINATARIO = "";
-
-    private SimpleDateFormat formatter = new SimpleDateFormat("dd/MM/yyyy");
+	private SimpleDateFormat formatter = new SimpleDateFormat("dd/MM/yyyy");
+    
+    
+	// Datos para el servicio
+    @Autowired
+    public ZendeskServiceData data;
 
 
     /** The portalclientes web ejb remote. */
@@ -115,7 +94,7 @@ public class ZendeskService {
         // Obtiene el idCliente de la tarjeta
         if(StringUtils.isNotBlank(usuarioAlta.getNumTarjeta())){
             try{
-                String urlToRead = TARJETAS_GETDATOS + usuarioAlta.getNumTarjeta();
+                String urlToRead = data.getTARJETAS_GETDATOS() + usuarioAlta.getNumTarjeta();
                 ResponseEntity<String> res = restTemplate.getForEntity( urlToRead, String.class);
                 if(res.getStatusCode() == HttpStatus.OK){
                     String dusuario = res.getBody();
@@ -199,11 +178,11 @@ public class ZendeskService {
             LOG.error("Error al obtener los datos en BRAVO del cliente", e);
         }
 
-        String ticket = String.format(PETICION_ZENDESK, clientName.toString(), usuarioAlta.getEmail(), datosUsuario.toString()+datosBravo.toString()+
+        String ticket = String.format(data.getPETICION_ZENDESK(), clientName.toString(), usuarioAlta.getEmail(), datosUsuario.toString()+datosBravo.toString()+
                 parseJsonBravo(datosServicio));
         ticket = ticket.replaceAll("["+ESCAPED_LINE_SEPARATOR+"]", " ");
 
-        try(Zendesk zendesk = new Zendesk.Builder(URL_ZENDESK).setUsername(ZENDESK_USER).setToken(TOKEN_ZENDESK).build()){
+        try(Zendesk zendesk = new Zendesk.Builder(data.getURL_ZENDESK()).setUsername(data.getZENDESK_USER()).setToken(data.getTOKEN_ZENDESK()).build()){
             //Ticket
             Ticket petiZendesk = mapper.readValue(ticket, Ticket.class);
             zendesk.createTicket(petiZendesk);
@@ -212,10 +191,10 @@ public class ZendeskService {
             LOG.error("Error al crear ticket ZENDESK", e);
             // Send email
 
-            CorreoElectronico correo = new CorreoElectronico( Long.parseLong(ZENDESK_ERROR_MAIL_FUNCIONALIDAD), "es" )
+            CorreoElectronico correo = new CorreoElectronico( Long.parseLong(data.getZENDESK_ERROR_MAIL_FUNCIONALIDAD()), "es" )
                     .addParam(datosUsuario.toString().replaceAll(ESCAPE_ER+ESCAPED_LINE_SEPARATOR, HTML_BR))
                     .addParam(datosBravo.toString().replaceAll(ESCAPE_ER+ESCAPED_LINE_SEPARATOR, HTML_BR));
-            correo.setEmailA( ZENDESK_ERROR_DESTINATARIO );
+            correo.setEmailA( data.getZENDESK_ERROR_DESTINATARIO() );
             try
             {
                 emailService.enviar( correo );
