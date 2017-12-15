@@ -1,6 +1,6 @@
 package com.mycorp;
 
-import java.io.Closeable;
+
 import java.io.IOException;
 import java.util.Collections;
 import java.util.concurrent.ExecutionException;
@@ -25,38 +25,50 @@ import com.ning.http.client.RequestBuilder;
 import com.ning.http.client.Response;
 import com.ning.http.client.uri.Uri;
 
-public class Zendesk implements Closeable {
-    private static final String JSON = "application/json; charset=UTF-8";
-    private final boolean closeClient;
-    private final AsyncHttpClient client;
-    private final Realm realm;
-    private final String url;
+public class Zendesk  {
+
+	private static final String JSON = "application/json; charset=UTF-8";
+    private final Builder builder;
+    private Realm realm;
     private final String oauthToken;
     private final ObjectMapper mapper;
     private final Logger logger;
-    private boolean closed = false;
 
 
-    private Zendesk(AsyncHttpClient client, String url, String username, String password) {
+
+    Zendesk(Builder builder) {
         this.logger = LoggerFactory.getLogger(Zendesk.class);
-        this.closeClient = client == null;
         this.oauthToken = null;
-        this.client = client == null ? new AsyncHttpClient() : client;
-        this.url = url.endsWith("/") ? url + "api/v2" : url + "/api/v2";
-        if (username != null) {
+        this.builder = builder;
+        init();
+        this.mapper = createMapper();
+    }
+
+    
+    private void init() {
+       
+    	if(builder.getClient() == null) {
+        	builder.setClient(new AsyncHttpClient());
+        }
+        
+    	if(builder.getUrl().endsWith("/")) {
+    		builder.setUrl(builder.getUrl()+"api/v2");
+    	}else {
+    		builder.setUrl(builder.getUrl()+"/api/v2");    		
+    	}
+        if (builder.getUsername() != null) {
             this.realm = new Realm.RealmBuilder()
                     .setScheme(Realm.AuthScheme.BASIC)
-                    .setPrincipal(username)
-                    .setPassword(password)
+                    .setPrincipal(builder.getUsername())
+                    .setPassword(builder.getPassword())
                     .setUsePreemptiveAuth(true)
                     .build();
         } else {
-            if (password != null) {
+            if (builder.getPassword() != null) {
                 throw new IllegalStateException("Cannot specify token or password without specifying username");
             }
             this.realm = null;
         }
-        this.mapper = createMapper();
     }
 
     public Ticket createTicket(Ticket ticket) {
@@ -98,7 +110,7 @@ public class Zendesk implements Closeable {
     }
 
     private Uri cnst(String template) {
-        return Uri.create(url + template);
+        return Uri.create(builder.getUrl() + template);
     }
 
     private boolean isStatus2xx(Response response) {
@@ -116,7 +128,7 @@ public class Zendesk implements Closeable {
                 logger.debug("Request {} {}", request.getMethod(), request.getUrl());
             }
         }
-        return client.executeRequest(request, handler);
+        return builder.getClient().executeRequest(request, handler);
     }
 
     private void logResponse(Response response) throws IOException {
@@ -185,16 +197,7 @@ public class Zendesk implements Closeable {
     // Closeable interface methods
     //////////////////////////////////////////////////////////////////////
 
-    public boolean isClosed() {
-        return closed || client.isClosed();
-    }
 
-    public void close() {
-        if (closeClient && !client.isClosed()) {
-            client.close();
-        }
-        closed = true;
-    }
 
     //////////////////////////////////////////////////////////////////////
     // Static helper methods
@@ -213,46 +216,4 @@ public class Zendesk implements Closeable {
         }
     }
 
-    public static class Builder {
-        private AsyncHttpClient client = null;
-        private final String url;
-        private String username = null;
-        private String password = null;
-        private String token = null;
-        private String oauthToken = null;
-
-        public Builder(String url) {
-            this.url = url;
-        }
-
-        public Builder setUsername(String username) {
-            this.username = username;
-            return this;
-        }
-
-        public Builder setPassword(String password) {
-            this.password = password;
-            if (password != null) {
-                this.token = null;
-                this.oauthToken = null;
-            }
-            return this;
-        }
-
-        public Builder setToken(String token) {
-            this.token = token;
-            if (token != null) {
-                this.password = null;
-                this.oauthToken = null;
-            }
-            return this;
-        }
-
-        public Zendesk build() {
-            if (token != null) {
-                return new Zendesk(client, url, username + "/token", token);
-            }
-            return new Zendesk(client, url, username, password);
-        }
-    }
 }

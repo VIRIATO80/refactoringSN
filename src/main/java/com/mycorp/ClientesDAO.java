@@ -1,15 +1,5 @@
 package com.mycorp;
 
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-
-import com.mycorp.support.CorreoElectronico;
-import com.mycorp.support.Poliza;
-import com.mycorp.support.PolizaBasicoFromPolizaBuilder;
-import com.mycorp.support.Ticket;
-
-import util.datos.PolizaBasico;
-import util.datos.UsuarioAlta;
 
 public class ClientesDAO {
 
