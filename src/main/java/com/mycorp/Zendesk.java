@@ -1,47 +1,35 @@
 package com.mycorp;
 
 
-import java.io.IOException;
+
 import java.util.Collections;
-import java.util.concurrent.ExecutionException;
 import java.util.regex.Pattern;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.JavaType;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
 import com.mycorp.support.Ticket;
-import com.ning.http.client.AsyncCompletionHandler;
 import com.ning.http.client.AsyncHttpClient;
 import com.ning.http.client.ListenableFuture;
 import com.ning.http.client.Realm;
 import com.ning.http.client.Request;
 import com.ning.http.client.RequestBuilder;
-import com.ning.http.client.Response;
 import com.ning.http.client.uri.Uri;
 
-public class Zendesk  {
+public class Zendesk extends BasicAsyncCompletionHandler {
 
 	private static final String JSON = "application/json; charset=UTF-8";
     private final Builder builder;
     private Realm realm;
     private final String oauthToken;
-    private final ObjectMapper mapper;
-    private final Logger logger;
 
+    private static final Pattern RESTRICTED_PATTERN = Pattern.compile("%2B", Pattern.LITERAL);
 
-
-    Zendesk(Builder builder) {
-        this.logger = LoggerFactory.getLogger(Zendesk.class);
+    
+    
+    public Zendesk(Builder builder) {
+    	super(Zendesk.class, "Zendesk");
         this.oauthToken = null;
         this.builder = builder;
         init();
-        this.mapper = createMapper();
+
     }
 
     
@@ -49,8 +37,7 @@ public class Zendesk  {
        
     	if(builder.getClient() == null) {
         	builder.setClient(new AsyncHttpClient());
-        }
-        
+        }       
     	if(builder.getUrl().endsWith("/")) {
     		builder.setUrl(builder.getUrl()+"api/v2");
     	}else {
@@ -71,21 +58,14 @@ public class Zendesk  {
         }
     }
 
+    
     public Ticket createTicket(Ticket ticket) {
         return complete(submit(req("POST", cnst("/tickets.json"),
                         JSON, json(Collections.singletonMap("ticket", ticket))),
                 handle(Ticket.class, "ticket")));
     }
 
-    private byte[] json(Object object) {
-        try {
-            return mapper.writeValueAsBytes(object);
-        } catch (JsonProcessingException e) {
-            throw new ZendeskException(e.getMessage(), e);
-        }
-    }
 
-    private static final Pattern RESTRICTED_PATTERN = Pattern.compile("%2B", Pattern.LITERAL);
 
     private Request req(String method, Uri template, String contentType, byte[] body) {
         RequestBuilder builder = new RequestBuilder(method);
@@ -98,23 +78,6 @@ public class Zendesk  {
         builder.addHeader("Content-type", contentType);
         builder.setBody(body);
         return builder.build();
-    }
-
-    public static ObjectMapper createMapper() {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.enable(SerializationFeature.WRITE_ENUMS_USING_TO_STRING);
-        mapper.enable(DeserializationFeature.READ_ENUMS_USING_TO_STRING);
-        mapper.disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
-        mapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
-        return mapper;
-    }
-
-    private Uri cnst(String template) {
-        return Uri.create(builder.getUrl() + template);
-    }
-
-    private boolean isStatus2xx(Response response) {
-        return response.getStatusCode() / 100 == 2;
     }
 
     private <T> ListenableFuture<T> submit(Request request, ZendeskAsyncCompletionHandler<T> handler) {
@@ -130,90 +93,13 @@ public class Zendesk  {
         }
         return builder.getClient().executeRequest(request, handler);
     }
+    
+    
 
-    private void logResponse(Response response) throws IOException {
-        if (logger.isDebugEnabled()) {
-            logger.debug("Response HTTP/{} {}\n{}", response.getStatusCode(), response.getStatusText(),
-                    response.getResponseBody());
-        }
-        if (logger.isTraceEnabled()) {
-            logger.trace("Response headers {}", response.getHeaders());
-        }
-    }
-
-    private boolean isRateLimitResponse(Response response) {
-        return response.getStatusCode() == 429;
-    }
-
-    protected <T> ZendeskAsyncCompletionHandler<T> handle(final Class<T> clazz, final String name, final Class... typeParams) {
-        return new BasicAsyncCompletionHandler<T>(clazz, name, typeParams);
+    private Uri cnst(String template) {
+        return Uri.create(builder.getUrl() + template);
     }
 
 
-    private class BasicAsyncCompletionHandler<T> extends ZendeskAsyncCompletionHandler<T> {
-        private final Class<T> clazz;
-        private final String name;
-        private final Class[] typeParams;
-
-        public BasicAsyncCompletionHandler(Class clazz, String name, Class... typeParams) {
-            this.clazz = clazz;
-            this.name = name;
-            this.typeParams = typeParams;
-        }
-
-        @Override
-        public T onCompleted(Response response) throws Exception {
-            logResponse(response);
-            if (isStatus2xx(response)) {
-                if (typeParams.length > 0) {
-                    JavaType type = mapper.getTypeFactory().constructParametricType(clazz, typeParams);
-                    return mapper.convertValue(mapper.readTree(response.getResponseBodyAsStream()).get(name), type);
-                }
-                return mapper.convertValue(mapper.readTree(response.getResponseBodyAsStream()).get(name), clazz);
-            } else if (isRateLimitResponse(response)) {
-                throw new ZendeskException(response.toString());
-            }
-            if (response.getStatusCode() == 404) {
-                return null;
-            }
-            throw new ZendeskException(response.toString());
-        }
-    }
-
-
-    private static abstract class ZendeskAsyncCompletionHandler<T> extends AsyncCompletionHandler<T> {
-        @Override
-        public void onThrowable(Throwable t) {
-            if (t instanceof IOException) {
-                throw new ZendeskException(t);
-            } else {
-                super.onThrowable(t);
-            }
-        }
-    }
-
-
-    //////////////////////////////////////////////////////////////////////
-    // Closeable interface methods
-    //////////////////////////////////////////////////////////////////////
-
-
-
-    //////////////////////////////////////////////////////////////////////
-    // Static helper methods
-    //////////////////////////////////////////////////////////////////////
-
-    private static <T> T complete(ListenableFuture<T> future) {
-        try {
-            return future.get();
-        } catch (InterruptedException e) {
-            throw new ZendeskException(e.getMessage(), e);
-        } catch (ExecutionException e) {
-            if (e.getCause() instanceof ZendeskException) {
-                throw (ZendeskException) e.getCause();
-            }
-            throw new ZendeskException(e.getMessage(), e);
-        }
-    }
 
 }

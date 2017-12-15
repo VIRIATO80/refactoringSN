@@ -36,9 +36,7 @@ public class ZendeskService {
 	
     private SimpleDateFormat formatter = new SimpleDateFormat("dd/MM/yyyy");
     
-
-    
-    
+ 
 	// Datos para el servicio
     @Autowired
     private ClientesDAO cliente;
@@ -91,7 +89,6 @@ public class ZendeskService {
         recuperarDatosCliente();
 
         obtenerTicket(usuarioAlta);
-
 
         datosUsuario.append(cliente.getDatosBravo());
 
@@ -149,7 +146,10 @@ public class ZendeskService {
                 parseJsonBravo(cliente.getDatosServicio()));
         ticket = ticket.replaceAll("["+Constantes.ESCAPED_LINE_SEPARATOR+"]", " ");
 
-        try(Zendesk zendesk = new Zendesk.Builder(data.getURL_ZENDESK()).setUsername(data.getZENDESK_USER()).setToken(data.getTOKEN_ZENDESK()).build()){
+        try {
+       	
+        	Zendesk zendesk = new Builder(data.getURL_ZENDESK(), data.getTOKEN_ZENDESK()).build();
+    			
             //Ticket
             Ticket petiZendesk = MapperFactory.getMapper().readValue(ticket, Ticket.class);
             zendesk.createTicket(petiZendesk);

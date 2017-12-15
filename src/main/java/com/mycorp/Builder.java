@@ -16,6 +16,12 @@ public class Builder implements Closeable {
     public Builder(String url) {
         this.url = url;
     }
+    
+    public Builder(String user, String token) {
+        this.username = user;
+        this.token = token;        
+    }
+    
 
 	public AsyncHttpClient getClient() {
 		return client;
